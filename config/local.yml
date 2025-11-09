@@ -1,4 +1,4 @@
 env: "dev"
-storage_db: "storage/sqlite.db"
+storage_path: "storage/sqlite.db"
 http_server:
   address: "localhost:8000"
