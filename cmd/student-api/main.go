@@ -10,34 +10,51 @@ import (
 	"time"
 
 	"github.com/gourav224/student-api/internal/config"
+	"github.com/gourav224/student-api/internal/http/handlers/student"
+	"github.com/gourav224/student-api/internal/storage/sqlite"
 )
 
 func main() {
 	// -------------------------------
 	// 1️⃣ Load configuration
 	// -------------------------------
-	cfg := config.MustLoad() // load settings like port, DB, etc.
+	cfg := config.MustLoad()
 
 	// -------------------------------
-	// 2️⃣ Initialize structured logger
+	// 2️⃣ Setup structured logger
 	// -------------------------------
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo, // log level: Debug, Info, Warn, Error
+		Level: slog.LevelInfo,
 	}))
-	slog.SetDefault(logger) // make it global, accessible via slog.Info/Error etc.
+	slog.SetDefault(logger)
 
-	slog.Info("starting server", "address", cfg.HTTPServer.Addr)
+	slog.Info("initializing server", "address", cfg.HTTPServer.Addr)
 
 	// -------------------------------
-	// 3️⃣ Setup routes using ServeMux
+	// 3️⃣ Initialize Database
+	// -------------------------------
+	db, err := sqlite.New(cfg)
+	if err != nil {
+		slog.Error("failed to initialize database", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	defer func() {
+		if cerr := db.Db.Close(); cerr != nil {
+			slog.Warn("failed to close database", slog.String("error", cerr.Error()))
+		}
+	}()
+	slog.Info("connected to sqlite database", "path", cfg.StoragePath)
+
+	// -------------------------------
+	// 4️⃣ Setup HTTP Router
 	// -------------------------------
 	router := http.NewServeMux()
-	router.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("welcome to api"))
-	})
+	router.HandleFunc("POST /api/students", student.New(db))
+	router.HandleFunc("GET /api/students/{id}", student.GetById(db))
+	router.HandleFunc("GET /api/students/", student.GetList(db))
 
 	// -------------------------------
-	// 4️⃣ Setup server
+	// 5️⃣ Create HTTP Server
 	// -------------------------------
 	server := &http.Server{
 		Addr:    cfg.HTTPServer.Addr,
@@ -45,14 +62,13 @@ func main() {
 	}
 
 	// -------------------------------
-	// 5️⃣ Listen for OS signals
+	// 6️⃣ Graceful Shutdown Setup
 	// -------------------------------
-	// Create a channel that receives OS signals (like Ctrl+C)
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 
 	// -------------------------------
-	// 6️⃣ Start the server in a goroutine
+	// 7️⃣ Run Server in Goroutine
 	// -------------------------------
 	go func() {
 		slog.Info("server is listening", "address", cfg.HTTPServer.Addr)
@@ -63,13 +79,13 @@ func main() {
 	}()
 
 	// -------------------------------
-	// 7️⃣ Block until signal is received
+	// 8️⃣ Wait for Interrupt Signal
 	// -------------------------------
 	<-done
 	slog.Warn("shutdown signal received")
 
 	// -------------------------------
-	// 8️⃣ Graceful shutdown with timeout
+	// 9️⃣ Graceful Shutdown with Timeout
 	// -------------------------------
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
