@@ -50,8 +50,10 @@ func main() {
 	// -------------------------------
 	router := http.NewServeMux()
 	router.HandleFunc("POST /api/students", student.New(db))
+	router.HandleFunc("GET /api/students", student.GetList(db))
 	router.HandleFunc("GET /api/students/{id}", student.GetById(db))
-	router.HandleFunc("GET /api/students/", student.GetList(db))
+	router.HandleFunc("PATCH /api/students/{id}", student.UpdateById(db))
+	router.HandleFunc("DELETE /api/students/{id}", student.DeleteById(db))
 
 	// -------------------------------
 	// 5️⃣ Create HTTP Server
